@@ -112,8 +112,8 @@ def train():
     with tf.Graph().as_default():
         with tf.name_scope('data_loader'):
             with tf.device('/cpu:0'):
-                 data_loader = data_batch.Data_Loader()
-                 data_loader.get_dataset()
+                data_loader = data_batch.Data_Loader(dataset_dir=, split_sizes={'train':})
+                data_loader.get_dataset()
         
         with tf.device('/cpu:0'):
             global_step = tf.train.create_global_step()
@@ -159,7 +159,7 @@ def train():
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
             train_op = tf.group(apply_gradient_op, variable_averages)
-
+    
 
 
 

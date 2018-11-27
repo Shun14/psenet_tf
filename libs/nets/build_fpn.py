@@ -118,23 +118,23 @@ class FPN(object):
             if self.net_name == 'resnet_v1_50':
                 feature_maps_dict = {
                     'C2': self.share_net[
-                        'resnet_v1_50/block1/unit_2/bottleneck_v1'],  # [56, 56]
+                        'resnet_v1_50/block1'],  # [56, 56]
                     'C3': self.share_net[
-                        'resnet_v1_50/block2/unit_3/bottleneck_v1'],  # [28, 28]
+                        'resnet_v1_50/block2'],  # [28, 28]
                     'C4': self.share_net[
-                        'resnet_v1_50/block3/unit_5/bottleneck_v1'],  # [14, 14]
+                        'resnet_v1_50/block3'],  # [14, 14]
                     'C5': self.share_net['resnet_v1_50/block4']  # [7, 7]
                 }
             elif self.net_name == 'resnet_v1_101':
                 feature_maps_dict = {
                     'C2': self.share_net[
-                        'resnet_v1_101/block1/unit_2/bottleneck_v1'],
+                        'resnet_v1_101/block1'],
                 # [56, 56]
                     'C3': self.share_net[
-                        'resnet_v1_101/block2/unit_3/bottleneck_v1'],
+                        'resnet_v1_101/block2'],
                 # [28, 28]
                     'C4': self.share_net[
-                        'resnet_v1_101/block3/unit_22/bottleneck_v1'],
+                        'resnet_v1_101/block3'],
                 # [14, 14]
                     'C5': self.share_net['resnet_v1_101/block4']  # [7, 7]
                 }

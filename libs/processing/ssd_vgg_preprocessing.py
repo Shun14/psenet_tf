@@ -18,12 +18,11 @@ from enum import Enum, IntEnum
 import numpy as np
 
 import tensorflow as tf
-import tf_extended as tfe
 
 from tensorflow.python.ops import control_flow_ops
 
-from processing import tf_image
-
+from libs.processing import tf_image
+import  libs.tf_extended as tfe
 
 slim = tf.contrib.slim
 
@@ -301,6 +300,7 @@ def preprocess_for_train(image, labels, bboxes, xs, ys,
         dst_image, bboxes, xs, ys = tf_image.random_flip_left_right(dst_image, bboxes, xs, ys)
 
         # Randomly distort the colors. There are 4 ways to do it.
+        fast_mode = False
         dst_image = apply_with_random_selector(
                 dst_image,
                 lambda x, ordering: distort_color(x, ordering, fast_mode),

@@ -1,5 +1,5 @@
 TRIAN_CONFIG = {
-    'batch_size': 16,
+    'batch_size': 1,
     'number_kernel_scales':3,
     'num_preprocessing_threads':4,
     'minimal_scale_ratio':0.5,

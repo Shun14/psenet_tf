@@ -89,7 +89,7 @@ class Data_Loader(object):
         self.dataset_dir = dataset_dir
         self.split_sizes = split_sizes
 
-    def get_dataset(self, split_sizes):
+    def get_dataset(self):
         datasets = get_datasets(self.dataset_dir, self.split_sizes)
         provider = slim.dataset_data_provider.DatasetDataProvider(
                     datasets,
@@ -114,7 +114,8 @@ class Data_Loader(object):
         gxs = tf.transpose(tf.stack([x1, x2, x3, x4])) #shape = (N,4)
         gys = tf.transpose(tf.stack([y1, y2, y3, y4]))
         #after preprocessing get seg maps
-        image, labels, bboxes, xs, ys = ssd_vgg_preprocessing.preprocess_image(gimage, glabels, gbboxes, gxs, gys, out_shape=TRIAN_CONFIG['train_scale'] ,is_training=True)
+        resized_shape = (TRIAN_CONFIG['train_scale'], TRIAN_CONFIG['train_scale'])
+        image, labels, bboxes, xs, ys = ssd_vgg_preprocessing.preprocess_image(gimage, glabels, gbboxes, gxs, gys, out_shape= resized_shape ,is_training=True)
         #get seg maps and labels
         image = tf.identity(image, 'processed_image')
         seg_maps, labels = self.get_seg_maps(xs, ys, bboxes, labels, mode=TRIAN_CONFIG['dataset_format']['H'])
@@ -141,11 +142,15 @@ class Data_Loader(object):
         return:
         seg_maps, labels
         """
+        global seg_maps
         if mode == TRIAN_CONFIG['dataset_format']['H'] and bboxes is not None:
-            seg_maps , labels = tf.py_func(self.get_seg_maps_for_h_func, [bboxes, labels], [tf.float32, tf.bool])
+            seg_maps, labels = tf.py_func(self.get_seg_maps_for_h_func, [bboxes, labels], [tf.float32, tf.bool])
+
         elif mode == TRIAN_CONFIG['dataset_format']['P'] and xs is not None and ys is not None:
-            seg_maps , labels = tf.py_func(self.get_seg_maps_for_p_func, [xs, ys, labels], [tf.float32, tf.bool])
-        
+            seg_maps, labels = tf.py_func(self.get_seg_maps_for_p_func, [xs, ys, labels], [tf.float32, tf.bool])
+        n = TRIAN_CONFIG['number_kernel_scales']
+        train_scale = TRIAN_CONFIG['train_scale']
+        seg_maps.set_shape([n, train_scale, train_scale])
         return seg_maps, labels
 
     def get_seg_maps_for_h_func(self, bboxes, labels):
@@ -159,8 +164,12 @@ class Data_Loader(object):
         n = TRIAN_CONFIG['number_kernel_scales']
         train_scale = TRIAN_CONFIG['train_scale']
         m = TRIAN_CONFIG['minimal_scale_ratio']
-        seg_maps = []
-        
+        seg_maps = np.zeros([n, train_scale, train_scale])
+        #seg_maps format: n kinds of seg maps
+        #i bboxes
+        #such as : [ 1_1, 1_2, 1_3 ... 1_i, 2_1, 2_2 ... 2_i, 3_1, 3_2 ... 3_i ]
+        #please change the order to [n, train_scale, train_scale]
+        #numpy reshape or tf reshape
         for i in range(n, 0 , -1):
             seg_map = np.zeros([train_scale, train_scale])
             for index ,bbox in enumerate(bboxes):
@@ -171,17 +180,18 @@ class Data_Loader(object):
                 ymax = int(bbox[2]* train_scale)
                 xmax = int(bbox[3]* train_scale)
                 if i == n:
-                    seg_map = seg_map[ymin:ymax, xmin:xmax]
+                    seg_map[ymin:ymax, xmin:xmax] = 1
                 else:
                     r_i = 1. - (float(1. -m) * (n - i)) / (n - 1) 
                     area = (ymax - ymin) * (xmax - xmin)
                     perimeter =2* (ymax - ymin + xmax - xmin)
-                    d_i = area * ( 1. - r_i*r_i)
+                    d_i = area * ( 1. - r_i*r_i) / perimeter
                     ymin_new = ymin + d_i
                     ymax_new = ymax - d_i
-                    seg_map = seg_map[ymin_new:ymax_new, xmin:xmax]
-            seg_maps.append(seg_map)
-        return seg_maps, True
+                    seg_map[ymin_new:ymax_new, xmin:xmax] = 1
+            seg_maps[i] = seg_map
+        # np.reshape(seg_maps, (n, train_scale, train_scale))
+        return seg_maps, labels
             
 
 
