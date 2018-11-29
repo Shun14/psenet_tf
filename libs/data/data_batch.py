@@ -144,13 +144,13 @@ class Data_Loader(object):
         """
         global seg_maps
         if mode == TRIAN_CONFIG['dataset_format']['H'] and bboxes is not None:
-            seg_maps, labels = tf.py_func(self.get_seg_maps_for_h_func, [bboxes, labels], [tf.float32, tf.bool])
+            seg_maps, labels = tf.py_func(self.get_seg_maps_for_h_func, [bboxes, labels], [tf.float32, tf.int64])
 
         elif mode == TRIAN_CONFIG['dataset_format']['P'] and xs is not None and ys is not None:
-            seg_maps, labels = tf.py_func(self.get_seg_maps_for_p_func, [xs, ys, labels], [tf.float32, tf.bool])
+            seg_maps, labels = tf.py_func(self.get_seg_maps_for_p_func, [xs, ys, labels], [tf.float32, tf.int64])
         n = TRIAN_CONFIG['number_kernel_scales']
         train_scale = TRIAN_CONFIG['train_scale']
-        seg_maps.set_shape([n, train_scale, train_scale])
+        seg_maps.set_shape([train_scale, train_scale, n])
         return seg_maps, labels
 
     def get_seg_maps_for_h_func(self, bboxes, labels):
@@ -164,13 +164,13 @@ class Data_Loader(object):
         n = TRIAN_CONFIG['number_kernel_scales']
         train_scale = TRIAN_CONFIG['train_scale']
         m = TRIAN_CONFIG['minimal_scale_ratio']
-        seg_maps = np.zeros([n, train_scale, train_scale])
+        seg_maps = np.zeros([train_scale, train_scale, n], dtype=np.float32)
         #seg_maps format: n kinds of seg maps
         #i bboxes
         #such as : [ 1_1, 1_2, 1_3 ... 1_i, 2_1, 2_2 ... 2_i, 3_1, 3_2 ... 3_i ]
         #please change the order to [n, train_scale, train_scale]
         #numpy reshape or tf reshape
-        for i in range(n, 0 , -1):
+        for i in range(n):
             seg_map = np.zeros([train_scale, train_scale])
             for index ,bbox in enumerate(bboxes):
                 if labels[index] == 0:
@@ -179,18 +179,17 @@ class Data_Loader(object):
                 xmin = int(bbox[1]* train_scale)
                 ymax = int(bbox[2]* train_scale)
                 xmax = int(bbox[3]* train_scale)
-                if i == n:
+                if i == n-1:
                     seg_map[ymin:ymax, xmin:xmax] = 1
                 else:
                     r_i = 1. - (float(1. -m) * (n - i)) / (n - 1) 
                     area = (ymax - ymin) * (xmax - xmin)
                     perimeter =2* (ymax - ymin + xmax - xmin)
                     d_i = area * ( 1. - r_i*r_i) / perimeter
-                    ymin_new = ymin + d_i
-                    ymax_new = ymax - d_i
+                    ymin_new = int(ymin + d_i)
+                    ymax_new = int(ymax - d_i)
                     seg_map[ymin_new:ymax_new, xmin:xmax] = 1
-            seg_maps[i] = seg_map
-        # np.reshape(seg_maps, (n, train_scale, train_scale))
+            seg_maps[:, :,i] = seg_map
         return seg_maps, labels
             
 
@@ -198,6 +197,7 @@ class Data_Loader(object):
     def get_seg_maps_for_p_func(self, xs, ys, labels):
         """
         the function creates seg maps for quadrilateral box
+        TODO:use EAST function to produce the segmaps
         inputs:
         xs store the xs cor it's shape: (N,4) format x1, x2,x3, x4
         ys store the ys cor it's shape: (N,4) format y1, y2,y3, y4
@@ -206,3 +206,6 @@ class Data_Loader(object):
         """
         pass
 
+if __name__ == '__main__':
+    data = Data_Loader('test', {'train':200})
+    # data.get_seg_maps_for_h_func()
