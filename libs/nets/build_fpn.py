@@ -167,34 +167,44 @@ class FPN(object):
         return feature_pyramid
 
     def build_PSENET(self):
-        seg_feature_maps = {}
+        '''
+        :return: seg_feature_maps format (batch_size, train_scale, train_scale, number_of_kernels)
+        '''
+        n = TRIAN_CONFIG['number_kernel_scales']
+         # TRIAN_CONFIG[]
+        fpn_net = self.fpn
+        seg_feature_maps_list = []
         with tf.variable_scope('build_PSENET'):
 
             with slim.arg_scope([slim.conv2d], weights_regularizer=slim.l2_regularizer(self.rpn_weight_decay)):
-                fpn_net = self.fpn
-                fpn_p2_combine = tf.concat([fpn_net['P2'],  unpool(fpn_net['P3'], 'unpool_p3', 2)], axis=0)
-                fpn_p3_combine = tf.concat([fpn_p2_combine, unpool(fpn_net['P4'], 'unpool_p4', 4)], axis=0)
-                fpn_p4_combine = tf.concat([fpn_p3_combine, unpool(fpn_net['P5'], 'unpool_p5', 8)], axis=0)
+
+                fpn_p2_combine = tf.concat([fpn_net['P2'],  unpool(fpn_net['P3'], 'unpool_p3', 2)], axis=-1)
+                fpn_p3_combine = tf.concat([fpn_p2_combine, unpool(fpn_net['P4'], 'unpool_p4', 4)], axis=-1)
+                fpn_p4_combine = tf.concat([fpn_p3_combine, unpool(fpn_net['P5'], 'unpool_p5', 8)], axis=-1)
                 #build fusion feature
                 fpn_end = slim.conv2d(fpn_p4_combine, 256, [3,3], stride=1, activation_fn=tf.nn.relu,normalizer_fn=slim.batch_norm, scope='psenet_head')
 
-                for i in range(TRIAN_CONFIG['number_kernel_scales']):
+                for i in range(n):
                     seg_map = slim.conv2d(fpn_end, 1, [1,1], normalizer_fn=None, activation_fn=None)
                     up_seg_map = tf.image.resize_bilinear(seg_map, size=[tf.shape(seg_map)[1]*int(4),  tf.shape(seg_map)[2]*int(4)])
                     seg_map = tf.sigmoid(up_seg_map)
-                    seg_feature_maps['s' + str(i)] = seg_map
-
-        return  seg_feature_maps
+                    seg_map = tf.Print(seg_map, [tf.shape(seg_map), seg_map], message='seg map:', summarize=20)
+                    seg_feature_maps_list.append(seg_map)
+        seg_feature_maps = tf.concat(seg_feature_maps_list, axis=-1)
+        return seg_feature_maps
 
 
     def build_loss(self, gt_seg_maps):
+        #gt seg maps format (batch_size, train_scale, train_scale, number_of_kernels) same as pre_seg_maps
         pre_seg_maps = self.pre_seg_maps
-
+        n = TRIAN_CONFIG['number_kernel_scales']
+        lambda_train = TRIAN_CONFIG['lambda_train']
         loss = None
+        with tf.name_scope('Loss'):
+        # for i in range(n):
+            tf.add_to_collection('losses', loss)
 
-        tf.add_collection('losses', loss)
-
-
+        tf.add_n(tf.get_collection('losses'), name='total_loss')
 
 
 
@@ -203,7 +213,7 @@ if __name__ == '__main__':
     import os
     import numpy as np
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-    test_input = tf.Variable(initial_value=tf.ones((((5, 384,384,3)))),dtype=tf.float32)
+    test_input = tf.Variable(initial_value=tf.ones((((2, 640,640,3)))),dtype=tf.float32)
 
     fpn_model = FPN('resnet_v1_101',test_input, is_training=True)
     # output = fpn_model.model()

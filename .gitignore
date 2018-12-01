@@ -1,0 +1,6 @@
+libs/data/test/
+libs/tf_extended/__pycache__/
+configs/__pycache__/
+libs/data/__pycache__/
+libs/processing/__pycache__/
+.idea/

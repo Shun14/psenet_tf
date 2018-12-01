@@ -17,7 +17,8 @@ import libs.data.data_batch as data_batch
 import libs.nets.build_fpn as fpn
 from configs.train_config import TRIAN_CONFIG
 import tensorflow.contrib.slim as slim
-import tnesorflow as tf
+import tensorflow as tf
+import os
 import re
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -44,6 +45,10 @@ tf.app.flags.DEFINE_string(
     # 'checkpoint_path', './ssd_model',
     # 'checkpoint_path', './dssd_tfmodel/synth_model/huawei_synth_v3_dssd_final_model/',#retrain a new model
     'The path to a checkpoint from which to fine-tune.')
+tf.app.flags.DEFINE_bool(
+    'ignore_missing_vars', False,
+    'The parameter which means ignore missing vars in the checkpoint'
+)
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -112,19 +117,21 @@ def train():
     with tf.Graph().as_default():
         with tf.name_scope('data_loader'):
             with tf.device('/cpu:0'):
-                data_loader = data_batch.Data_Loader(dataset_dir=, split_sizes={'train':})
+                data_loader = data_batch.Data_Loader(dataset_dir=FLAGS.dataset_dir, split_sizes='train')
                 data_loader.get_dataset()
-        
+
         with tf.device('/cpu:0'):
             global_step = tf.train.create_global_step()
             boundaries = TRIAN_CONFIG['step_boundaries']
             learning_rate = TRIAN_CONFIG['learning_rate']
+            tf.summary.scalar('learning_rate', learning_rate)
             learning_rate = tf.train.piecewise_constant(global_step, boundaries, learning_rate )
             optimizer = tf.train.GradientDescentOptimizer(learning_rate)
 
         #add clones and calculate loss
         tower_grads = []
-        with tf.Variable_scope(tf.get_variable_scope()):
+        summaries = []
+        with tf.variable_scope(tf.get_variable_scope()):
             for i in range(0, FLAGS.gpu_num):
                 with tf.device('/gpu:%d' % i):
                     with tf.name_scope('%s_%d' % ('psenet_tower' , i)) as scope:
@@ -157,9 +164,36 @@ def train():
         variable_averages_op = variable_averages.apply(tf.trainable_variables())
         # Group all updates to into a single train op.
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-        with tf.control_dependencies(update_ops):
+        with tf.control_dependencies([variable_averages_op, update_ops]):
             train_op = tf.group(apply_gradient_op, variable_averages)
-    
+
+        saver = tf.train.Saver(tf.global_variables())
+        summary_writer = tf.summary.FileWriter(FLAGS.train_dir,
+                                               tf.get_default_graph())
+
+        init = tf.global_variables_initializer()
+
+
+        tf_config = tf.ConfigProto(allow_soft_placement=True)
+
+        with tf.Session(config=tf_config) as sess:
+            sess.run(init)
+            if FLAGS.checkpoint_path is not None:
+                print('from pevious checkpoint')
+                ckpt = tf.train.latest_checkpoint(FLAGS.train_dir)
+                saver.restore(sess, ckpt)
+            else:
+                if FLAGS.pretrained_model_path is not None:
+                    variable_restore_op = slim.assign_from_checkpoint_fn(
+                        FLAGS.checkpoint_path, slim.get_trainable_variables(),
+                    ignore_missing_vars=FLAGS.ignore_missing_vars)
+                    print(' pretrained model exists')
+                    variable_restore_op(sess)
+                    # start_step = global_step.eval() + 1
+
+            start_time = time.time()
+
+
 
 
 

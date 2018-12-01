@@ -13,7 +13,8 @@ from __future__ import division
 import numpy as np
 import tensorflow as tf
 import os
-import cv2
+import glob
+import pyclipper
 import tensorflow.contrib.slim as slim
 from configs.train_config import TRIAN_CONFIG
 from libs.processing import ssd_vgg_preprocessing
@@ -27,8 +28,16 @@ ITEMS_TO_DESCRIPTIONS = {
 
 
 def get_datasets(data_dir,split_sizes, file_pattern = '*.tfrecord'):
+    file_pattern = '{}_{}'.format(split_sizes, file_pattern)
     file_patterns = os.path.join(data_dir, file_pattern)
     print('file_path: {}'.format(file_patterns))
+    file_path_list = glob.glob(file_pattern)
+    num_samples = 0
+    for file_path in file_path_list:
+        for record in tf.python_io.tf_record_iterator(file_path):
+            print(file_path)
+            num_samples += 1
+    print('num_samples:', num_samples)
     reader = tf.TFRecordReader
     keys_to_features = {
         'image/encoded': tf.FixedLenFeature((), tf.string, default_value=''),
@@ -78,13 +87,13 @@ def get_datasets(data_dir,split_sizes, file_pattern = '*.tfrecord'):
         data_sources=file_patterns,
         reader=reader,
         decoder=decoder,
-        num_samples=split_sizes['train'],
+        num_samples=num_samples,
         items_to_descriptions=ITEMS_TO_DESCRIPTIONS,
         num_classes=TRIAN_CONFIG['num_classes'],
         labels_to_names=labels_to_names)
 
 class Data_Loader(object):
-    def __init__(self, dataset_dir, split_sizes={'train': 2518}):
+    def __init__(self, dataset_dir, split_sizes='train'):
         self.queue = None
         self.dataset_dir = dataset_dir
         self.split_sizes = split_sizes
@@ -126,6 +135,12 @@ class Data_Loader(object):
             batch_queue = slim.prefetch_queue.prefetch_queue(
                 [b_image, b_segmaps], num_threads=4, capacity=5* TRIAN_CONFIG['batch_size']
             )
+        '''
+        so the data format are:
+        seg_maps:(batch_size, img_h, img_w, kernels_num_scales)
+        image:   (batch_size, img_h, img_w, channels)
+        
+        '''
         self.queue = batch_queue
     
     def get_batch(self):
@@ -153,7 +168,7 @@ class Data_Loader(object):
         seg_maps.set_shape([train_scale, train_scale, n])
         return seg_maps, labels
 
-    def get_seg_maps_for_h_func(self, bboxes, labels):
+    def get_seg_maps_for_h_func(self, bboxes, labels, clip=True):
         """
         the function creates seg maps for horizontal box
         inputs:
@@ -168,17 +183,21 @@ class Data_Loader(object):
         #seg_maps format: n kinds of seg maps
         #i bboxes
         #such as : [ 1_1, 1_2, 1_3 ... 1_i, 2_1, 2_2 ... 2_i, 3_1, 3_2 ... 3_i ]
-        #please change the order to [n, train_scale, train_scale]
-        #numpy reshape or tf reshape
+        #please change the order to [train_scale, train_scale, number_kernel]
+        #number_kernel from 0 to n-1, so [train_scale, train_scale, 0] means the smallest kernel in the kernels,
+        # [train_scale, train_scale, n-1] means the largest kernel in the kernels
+
         for i in range(n):
             seg_map = np.zeros([train_scale, train_scale])
             for index ,bbox in enumerate(bboxes):
                 if labels[index] == 0:
                     continue
-                ymin = int(bbox[0]* train_scale)
-                xmin = int(bbox[1]* train_scale)
-                ymax = int(bbox[2]* train_scale)
-                xmax = int(bbox[3]* train_scale)
+                bbox = bbox * train_scale
+                ymin = int(bbox[0])
+                xmin = int(bbox[1])
+                ymax = int(bbox[2])
+                xmax = int(bbox[3])
+
                 if i == n-1:
                     seg_map[ymin:ymax, xmin:xmax] = 1
                 else:
@@ -197,15 +216,40 @@ class Data_Loader(object):
     def get_seg_maps_for_p_func(self, xs, ys, labels):
         """
         the function creates seg maps for quadrilateral box
-        TODO:use EAST function to produce the segmaps
+        TODO:use pyclipper to complish this
         inputs:
         xs store the xs cor it's shape: (N,4) format x1, x2,x3, x4
         ys store the ys cor it's shape: (N,4) format y1, y2,y3, y4
         return:
         seg_maps, labels
         """
-        pass
+        assert xs.shape == ys.shape
 
-if __name__ == '__main__':
-    data = Data_Loader('test', {'train':200})
-    # data.get_seg_maps_for_h_func()
+        n = TRIAN_CONFIG['number_kernel_scales']
+        train_scale = TRIAN_CONFIG['train_scale']
+        m = TRIAN_CONFIG['minimal_scale_ratio']
+        seg_maps = np.zeros([train_scale, train_scale, n], dtype=np.float32)
+
+        for i in range(n):
+            seg_map = np.zeros([train_scale, train_scale])
+            for index in range(xs.shape[0]):
+                if labels[index] == 0:
+                    continue
+                points_list = []
+                for points in zip(xs[index]* train_scale, ys[index] * train_scale):
+                    points_list.append(points)
+                points_list = np.array(points_list, dtype=np.uint32) #float to int
+                print(points_list)
+            #
+            #     if i == n-1:
+            #         seg_map[ymin:ymax, xmin:xmax] = 1
+            #     else:
+            #         r_i = 1. - (float(1. -m) * (n - i)) / (n - 1)
+            #         area = (ymax - ymin) * (xmax - xmin)
+            #         perimeter =2* (ymax - ymin + xmax - xmin)
+            #         d_i = area * ( 1. - r_i*r_i) / perimeter
+            #         ymin_new = int(ymin + d_i)
+            #         ymax_new = int(ymax - d_i)
+            #         seg_map[ymin_new:ymax_new, xmin:xmax] = 1
+            # seg_maps[:, :,i] = seg_map
+        return seg_maps, labels

@@ -22,7 +22,7 @@ def DataLoaderTest():
     with g.as_default():
         with tf.device('/cpu:0'):
             data_loader = Data_Loader(dataset_dir='test',
-                                      split_sizes={'train': 200})
+                                      split_sizes='train')
             data_loader.get_dataset()
             with tf.Session() as sess:
                 coord = tf.train.Coordinator()
