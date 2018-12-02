@@ -199,14 +199,34 @@ class FPN(object):
         pre_seg_maps = self.pre_seg_maps
         n = TRIAN_CONFIG['number_kernel_scales']
         lambda_train = TRIAN_CONFIG['lambda_train']
-        loss = None
-        with tf.name_scope('Loss'):
-        # for i in range(n):
-            tf.add_to_collection('losses', loss)
+        total_loss = None
+        Lc_loss = None
+        Ls_loss = None
+        #L = λLc + (1 − λ)Ls
+        # with tf.name_scope('loss'):
+        for i in range(n):
+            if i == n-1:
+                #Lc loss
+                pass
+            else:
+                #Ls loss
+                
+                
+                pass
+        
+        tf.add_to_collection('losses', loss)
 
         tf.add_n(tf.get_collection('losses'), name='total_loss')
 
-
+        
+        def dice_loss(self, pre_seg_map, gt_seg_map):
+            #input format (batch_size, train_scale, train_scale, 1)
+            #calculate the single seg map loss(single batch)
+            multi_sum = tf.reduce_sum(tf.multiply(pre_seg_map, gt_seg_map) ,axis=[1,2,3])
+            sum_pre = tf.reduce_sum( tf.pow(pre_seg_map, 2), [1,2,3] )
+            sum_gt = tf.reduce_sum( tf.pow(gt_seg_map, 2), [1,2,3])
+            final_res = tf.div(tf.multiply(tf.cast(2, tf.float32),multi_sum) , tf.add(sum_pre, sum_gt))
+            return final_res
 
 if __name__ == '__main__':
     # test fpn class output
